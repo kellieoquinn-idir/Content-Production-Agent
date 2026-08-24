@@ -2,20 +2,21 @@
 
 High temperature so the draft can be engaging. No tools — it writes
 from the research brief the orchestrator will pass in later.
+System prompt comes from Prompt Engineer (prompts.py) when it exists.
 """
 
 from langchain.agents import create_agent
 
+from agents.prompt_source import get_system_prompt
 from llm import make_model
-from prompts import WRITER_SYSTEM_PROMPT
 
 
-def build_writer_agent():
+def build_writer_agent(system_prompt: str | None = None):
     model = make_model(temperature=0.9)
     return create_agent(
         model,
         tools=[],
-        system_prompt=WRITER_SYSTEM_PROMPT,
+        system_prompt=get_system_prompt("WRITER_SYSTEM_PROMPT", system_prompt),
         name="writer",
     )
 
