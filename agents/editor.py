@@ -2,20 +2,21 @@
 
 Low-ish temperature so fact-checking stays strict. No tools — it
 compares the draft to the research brief the orchestrator will pass in.
+System prompt comes from Prompt Engineer (prompts.py) when it exists.
 """
 
 from langchain.agents import create_agent
 
+from agents.prompt_source import get_system_prompt
 from llm import make_model
-from prompts import EDITOR_SYSTEM_PROMPT
 
 
-def build_editor_agent():
+def build_editor_agent(system_prompt: str | None = None):
     model = make_model(temperature=0.2)
     return create_agent(
         model,
         tools=[],
-        system_prompt=EDITOR_SYSTEM_PROMPT,
+        system_prompt=get_system_prompt("EDITOR_SYSTEM_PROMPT", system_prompt),
         name="editor",
     )
 
