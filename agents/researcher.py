@@ -1,6 +1,6 @@
 """Researcher agent: same create_agent pattern as weather_agent.py.
 
-Low temperature. Uses the search_sources tool (stub catalog for now).
+Low temperature. Uses the search_sources tool (live web search).
 System prompt comes from Prompt Engineer (prompts.py) when it exists.
 """
 

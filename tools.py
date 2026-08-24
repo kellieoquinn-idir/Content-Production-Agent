@@ -1,21 +1,14 @@
 """Researcher resources.
 
 Same idea as get_weather in weather_agent.py: a @tool the model can call.
-This stub is the fake city dict. Swap the function body later for MCP/Google;
-keep the name and docstring so the researcher agent does not change.
+search_sources hits the live web (DuckDuckGo). If search fails, it falls
+back to the stub catalog so the pipeline still runs.
 """
 
 from langchain.tools import tool
 
 
-@tool
-def search_sources(topic: str) -> str:
-    """Search credible sources for a travel blog topic.
-
-    Use this before writing a research brief. The input should be the blog
-    topic, for example: 'best time to visit Lisbon' or 'hiking in Patagonia'.
-    Returns at least five facts with citations and links for verification.
-    """
+def _stub_sources(topic: str) -> str:
     slug = "-".join(topic.strip().lower().split()) or "travel"
     sources = [
         (
@@ -55,11 +48,46 @@ def search_sources(topic: str) -> str:
             "notes, and documents visitors should have before they go.",
         ),
     ]
-
-    lines = [f"Source catalog results for: {topic}", ""]
+    lines = [f"Source catalog results for: {topic} (stub fallback)", ""]
     for i, (title, url, fact) in enumerate(sources, start=1):
         lines.append(f"{i}. {title}")
         lines.append(f"   Fact: {fact}")
         lines.append(f"   Citation: {url}")
         lines.append("")
     return "\n".join(lines).strip()
+
+
+def _web_search(topic: str, max_results: int = 8) -> str:
+    from ddgs import DDGS
+
+    results = list(DDGS().text(topic, max_results=max_results))
+    if not results:
+        raise ValueError("search returned no results")
+
+    lines = [f"Live web search results for: {topic}", ""]
+    for i, item in enumerate(results, start=1):
+        title = item.get("title") or "(untitled)"
+        url = item.get("href") or ""
+        fact = item.get("body") or ""
+        lines.append(f"{i}. {title}")
+        lines.append(f"   Fact: {fact}")
+        lines.append(f"   Citation: {url}")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+@tool
+def search_sources(topic: str) -> str:
+    """Search credible sources for a travel blog topic.
+
+    Use this before writing a research brief. The input should be the blog
+    topic, for example: 'best time to visit Lisbon' or 'hiking in Patagonia'.
+    Returns at least five facts with citations and links for verification.
+    """
+    try:
+        return _web_search(topic)
+    except Exception as exc:
+        return (
+            f"Live web search failed ({exc}). Using stub catalog instead.\n\n"
+            + _stub_sources(topic)
+        )
