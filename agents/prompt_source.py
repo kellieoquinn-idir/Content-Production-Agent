@@ -13,7 +13,8 @@ from importlib import import_module
 _FALLBACKS = {
     "RESEARCHER_SYSTEM_PROMPT": (
         "You are the Fieldstone Media researcher agent. "
-        "Prompt Engineer owns the full system prompt."
+        "Call search_sources before writing the brief. "
+        "Use only facts and URLs returned by that tool. Do not invent citations."
     ),
     "WRITER_SYSTEM_PROMPT": (
         "You are the Fieldstone Media writer agent. "
