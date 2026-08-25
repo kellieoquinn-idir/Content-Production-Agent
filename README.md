@@ -9,6 +9,8 @@ topic
   → researcher  (search + cited brief)
   → writer      (draft from the brief only)
   → editor      (PASS or REVISE)
+       ↺ first REVISE: writer fixes from editor notes
+       → second REVISE: flag a human editor (this is the checkpoint that stays)
 ```
 
 ## Run it
@@ -41,6 +43,9 @@ python pipeline.py "best time to visit Lisbon" --trace
 | `agents/writer.py`     | Turns the brief into a ≥300 word post   |
 | `agents/editor.py`     | Fact-checks the draft against the brief |
 | `tools.py`             | Live web search (`search_sources`)      |
-| `pipeline.py`          | Hands the folder from desk to desk      |
-| `llm.py`               | Shared DeepSeek setup                   |
+| `critic.py`             | PASS vs REVISE rules and retry limit   |
+| `pipeline.py`           | Hands work desk to desk, runs retries  |
+| `orchestrator/`         | Manager that calls the pipeline        |
+| `main.py`               | Type a topic and run the full system   |
+| `llm.py`                | Shared DeepSeek setup                  |
 

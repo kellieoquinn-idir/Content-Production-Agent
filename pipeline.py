@@ -1,17 +1,7 @@
-"""Sequential Fieldstone pipeline: researcher → writer → editor.
+"""Sequential Fieldstone pipeline: researcher → writer → editor, with retry.
 
-Integration owns this handoff. Jared's orchestrator can call run_pipeline()
-later for parallel start / routing. Ayoka owns retry rules; this file does
-one editor pass and stops.
-
-Handoff shape:
-    topic: str
-    research_brief: str   # researcher final text, ≥5 cited facts
-    draft: str            # writer final text, ≥300 words
-    editor_verdict: str   # editor final text, should include PASS or REVISE
-    traces: dict          # each invoke's messages
-    run_id: str           # observability run tag
-    timings: dict         # seconds per agent
+If the editor/critic says REVISE twice, stop and flag a human editor.
+The writer gets one chance to fix notes in between those two reviews.
 """
 
 import argparse
@@ -19,6 +9,7 @@ import sys
 import time
 from datetime import datetime
 
+import critic
 import observability
 from agents.editor import build_editor_agent
 from agents.researcher import build_researcher_agent
@@ -45,34 +36,71 @@ def _tool_names(messages) -> list[str]:
     return names
 
 
-def _editor_decision(text: str) -> str:
-    head = text.upper()[:400]
-    if "REVISE" in head:
-        return "REVISE"
-    if "PASS" in head:
-        return "PASS"
-    return "see verdict"
-
-
-def invoke_and_log(run_id, agent_name, agent, payload, timings, trace=False):
-    print(f"[{_clock()}] {agent_name} started")
+def invoke_and_log(run_id, agent_name, agent, payload, timings, trace=False, label=None):
+    shown = label or agent_name
+    print(f"[{_clock()}] {shown} started")
     started = time.perf_counter()
-    result = agent.invoke(payload)
+    try:
+        result = agent.invoke(payload)
+    except Exception as exc:
+        duration_s = time.perf_counter() - started
+        timings[agent_name] = timings.get(agent_name, 0) + duration_s
+        print(f"[{_clock()}] {shown} failed  {duration_s:.2f}s  error: {exc}")
+        raise
     duration_s = time.perf_counter() - started
-    timings[agent_name] = duration_s
+    timings[agent_name] = timings.get(agent_name, 0) + duration_s
     observability.record_agent_run(run_id, agent_name, result["messages"], duration_s)
 
     extra = ""
     tools = _tool_names(result["messages"])
     if tools:
         extra += f"  tools: {', '.join(tools)}"
-    if agent_name == "editor":
-        extra += f"  decision: {_editor_decision(last_text(result))}"
-    print(f"[{_clock()}] {agent_name} finished  {duration_s:.2f}s{extra}")
+    print(f"[{_clock()}] {shown} finished  {duration_s:.2f}s{extra}")
 
     if trace:
-        observability.print_agent_trace(agent_name, result["messages"], duration_s)
+        observability.print_agent_trace(shown, result["messages"], duration_s)
     return result
+
+
+def _writer_payload(topic, research_brief, editor_notes=None, previous_draft=None):
+    if editor_notes:
+        return {
+            "messages": [{
+                "role": "user",
+                "content": (
+                    f"Revise this travel blog post about: {topic}\n\n"
+                    "The editor rejected the draft. Fix every issue in the "
+                    "notes. Use only the research brief. Do not invent facts.\n\n"
+                    f"RESEARCH BRIEF:\n{research_brief}\n\n"
+                    f"PREVIOUS DRAFT:\n{previous_draft}\n\n"
+                    f"EDITOR NOTES:\n{editor_notes}"
+                ),
+            }]
+        }
+    return {
+        "messages": [{
+            "role": "user",
+            "content": (
+                f"Write a travel blog post about: {topic}\n\n"
+                "Use only the research brief below. Do not invent facts.\n\n"
+                f"RESEARCH BRIEF:\n{research_brief}"
+            ),
+        }]
+    }
+
+
+def _editor_payload(topic, research_brief, draft):
+    return {
+        "messages": [{
+            "role": "user",
+            "content": (
+                f"Review this draft against the research brief for: {topic}\n\n"
+                f"{critic.EDITOR_CHECKLIST}\n\n"
+                f"RESEARCH BRIEF:\n{research_brief}\n\n"
+                f"DRAFT:\n{draft}"
+            ),
+        }]
+    }
 
 
 def run_pipeline(topic: str, trace: bool = False) -> dict:
@@ -80,6 +108,7 @@ def run_pipeline(topic: str, trace: bool = False) -> dict:
 
     run_id = observability.new_run_id()
     timings = {}
+    retry_history = []
 
     researcher = build_researcher_agent()
     writer = build_writer_agent()
@@ -105,44 +134,69 @@ def run_pipeline(topic: str, trace: bool = False) -> dict:
     research_brief = last_text(research_result)
 
     write_result = invoke_and_log(
-        run_id,
-        "writer",
-        writer,
-        {
-            "messages": [{
-                "role": "user",
-                "content": (
-                    f"Write a travel blog post about: {topic}\n\n"
-                    "Use only the research brief below. Do not invent facts.\n\n"
-                    f"RESEARCH BRIEF:\n{research_brief}"
-                ),
-            }]
-        },
-        timings,
-        trace=trace,
+        run_id, "writer", writer,
+        _writer_payload(topic, research_brief),
+        timings, trace=trace,
     )
     draft = last_text(write_result)
 
-    editor_result = invoke_and_log(
-        run_id,
-        "editor",
-        editor,
-        {
-            "messages": [{
-                "role": "user",
-                "content": (
-                    f"Review this draft against the research brief for: {topic}\n\n"
-                    "Fact-check the draft against the brief. Check grammar and "
-                    "readability. End with a clear decision: PASS or REVISE.\n\n"
-                    f"RESEARCH BRIEF:\n{research_brief}\n\n"
-                    f"DRAFT:\n{draft}"
-                ),
-            }]
-        },
-        timings,
-        trace=trace,
-    )
-    editor_verdict = last_text(editor_result)
+    retry_count = 0
+    revise_count = 0
+    decision = "UNKNOWN"
+    editor_verdict = ""
+    editor_result = None
+    human_review_reason = None
+
+    while True:
+        editor_label = "editor" if retry_count == 0 else f"editor retry {retry_count}"
+        editor_result = invoke_and_log(
+            run_id, "editor", editor,
+            _editor_payload(topic, research_brief, draft),
+            timings, trace=trace, label=editor_label,
+        )
+        editor_verdict = last_text(editor_result)
+        decision, editor_verdict = critic.apply_critic(editor_verdict, draft)
+        print(f"[{_clock()}] critic decision: {decision}")
+
+        retry_history.append({
+            "attempt": retry_count,
+            "decision": decision,
+            "verdict": editor_verdict,
+        })
+
+        if decision == "PASS":
+            break
+
+        if decision == "UNKNOWN":
+            human_review_reason = "Editor verdict was unclear (not PASS or REVISE)."
+            print(f"[{_clock()}] {human_review_reason} Flagging for a human editor.")
+            break
+
+        revise_count += 1
+        print(f"[{_clock()}] REVISE count: {revise_count}/{critic.REVISE_LIMIT}")
+
+        if revise_count >= critic.REVISE_LIMIT:
+            human_review_reason = (
+                "Editor said REVISE twice. A human editor needs to look at this draft."
+            )
+            print()
+            print("=" * 60)
+            print("FLAGGED FOR HUMAN EDITOR")
+            print("=" * 60)
+            print(human_review_reason)
+            break
+
+        retry_count += 1
+        print(f"[{_clock()}] sending draft back to writer (retry {retry_count})")
+        write_result = invoke_and_log(
+            run_id, "writer", writer,
+            _writer_payload(topic, research_brief, editor_verdict, draft),
+            timings, trace=trace,
+            label=f"writer retry {retry_count}",
+        )
+        draft = last_text(write_result)
+
+    requires_human_review = decision != "PASS"
 
     observability.print_run_summary(run_id, timings)
 
@@ -151,10 +205,16 @@ def run_pipeline(topic: str, trace: bool = False) -> dict:
         "research_brief": research_brief,
         "draft": draft,
         "editor_verdict": editor_verdict,
+        "decision": decision,
+        "retry_count": retry_count,
+        "revise_count": revise_count,
+        "requires_human_review": requires_human_review,
+        "human_review_reason": human_review_reason,
+        "retry_history": retry_history,
         "traces": {
             "researcher": research_result["messages"],
             "writer": write_result["messages"],
-            "editor": editor_result["messages"],
+            "editor": editor_result["messages"] if editor_result else [],
         },
         "run_id": run_id,
         "timings": timings,
@@ -193,6 +253,15 @@ def main() -> None:
     print("3. EDITOR VERDICT")
     print("=" * 60)
     print(result["editor_verdict"])
+    print()
+    print("=" * 60)
+    print(
+        f"DECISION: {result['decision']}  "
+        f"REVISE count: {result['revise_count']}/{critic.REVISE_LIMIT}  "
+        f"human editor: {result['requires_human_review']}"
+    )
+    if result.get("human_review_reason"):
+        print(result["human_review_reason"])
 
 
 if __name__ == "__main__":
@@ -200,3 +269,6 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         sys.exit(130)
+    except Exception as exc:
+        print(f"Pipeline stopped without crashing the process: {exc}")
+        sys.exit(1)
