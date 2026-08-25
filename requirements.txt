@@ -1,1 +1,4 @@
-
+langchain>=1.0.0
+langchain-deepseek>=1.0.0
+python-dotenv>=1.0.0
+ddgs>=9.0.0
