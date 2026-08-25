@@ -18,6 +18,8 @@ def main():
 
     if state.approved:
         print("Status: APPROVED")
+    elif state.requires_human_review:
+        print("Status: FLAGGED FOR HUMAN EDITOR")
     else:
         print("Status: REQUIRES REVISION")
 

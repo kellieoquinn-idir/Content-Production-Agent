@@ -16,5 +16,5 @@ class WorkflowState:
         self.approved = False
         self.retry_count = 0
 
-        # Human escalation flag
+        # Human escalation flag — set if still REVISE after max retries
         self.requires_human_review = False
