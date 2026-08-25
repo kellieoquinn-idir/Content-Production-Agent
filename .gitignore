@@ -28,3 +28,4 @@ pipeline_metrics.jsonl
 .idea/
 .DS_Store
 Thumbs.db
+.cursor/rules/tepp-phase-2-rubric.mdc
