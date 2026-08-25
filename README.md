@@ -1,11 +1,5 @@
 # Content Production Agent
 
-## Scenario
-Fieldstone Media is a content production agency specializing in travel blogging to increase tourism in client locations.  
-Current workflow:
-- Researcher gathers credible sources into a shared doc  
-- Writer drafts from those sources to create an engaging blog with the focus of increasing tourism to the location written about. 
-- Editor fact-checks line by line before publishing and reviews for readability, grammar, tone, etc. 
 A 3-day blog post, run in one command.
 
 Fieldstone already ships well-researched, well-written posts. The bottleneck is **time**: researcher → writer → editor, all in sequence, all billable. This prototype keeps that same chain (and the editor’s veto) but has agents do the slow parts.
@@ -19,7 +13,7 @@ topic
 
 ## Run it
 
-Python 3.10+ (3.12 is what we use). DeepSeek key from class.
+Python 3.10+ (3.12 is what we use).
 
 ```bash
 python3 -m venv .venv
@@ -36,7 +30,7 @@ python pipeline.py "hiking in Patagonia"
 python pipeline.py "best time to visit Lisbon" --trace
 ```
 
-`--trace` prints the full agent exchange (for the demo / observability).
+`--trace` prints the full agent exchange (Darnel's observability). Every run also appends to `observability_log.jsonl` and `pipeline_metrics.jsonl` (gitignored).
 
 ## Who does what
 
