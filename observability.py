@@ -47,9 +47,13 @@ def _message_to_dict(message) -> dict:
 
 
 def print_agent_trace(agent_name: str, messages, duration_s: float) -> None:
-    """Print the full conversation for one agent invocation (--trace demo output)."""
+    """Print a compact exchange for one agent (--trace demo output).
+
+    Does not reprint full handoff payloads (topic / brief / draft). Those
+    already appear in the pipeline output. JSONL still stores the full text.
+    """
     print(f"\n{'=' * 60}")
-    print(f"[{agent_name.upper()}] full exchange ({duration_s:.2f}s)")
+    print(f"[{agent_name.upper()}] exchange ({duration_s:.2f}s)")
     print("=" * 60)
     for message in messages:
         entry = _message_to_dict(message)
@@ -57,9 +61,12 @@ def print_agent_trace(agent_name: str, messages, duration_s: float) -> None:
             for tc in entry["tool_calls"]:
                 print(f"  [{entry['type']}] tool call -> {tc['name']}({tc['args']})")
         elif entry["type"] == "ToolMessage":
-            print(f"  [{entry['type']}] result: {_truncate(entry['content'])}")
+            print(f"  [{entry['type']}] result: {_truncate(entry['content'], 160)}")
+        elif entry["type"] == "HumanMessage":
+            n = len(entry["content"])
+            print(f"  [{entry['type']}] handoff in ({n} chars)")
         else:
-            print(f"  [{entry['type']}] {_truncate(entry['content'])}")
+            print(f"  [{entry['type']}] {_truncate(entry['content'], 160)}")
 
 
 def record_agent_run(run_id: str, agent_name: str, messages, duration_s: float) -> None:

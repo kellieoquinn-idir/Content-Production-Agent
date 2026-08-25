@@ -17,6 +17,7 @@ Handoff shape:
 import argparse
 import sys
 import time
+from datetime import datetime
 
 import observability
 from agents.editor import build_editor_agent
@@ -32,12 +33,43 @@ def last_text(result) -> str:
     return str(content)
 
 
+def _clock() -> str:
+    return datetime.now().strftime("%H:%M:%S")
+
+
+def _tool_names(messages) -> list[str]:
+    names = []
+    for message in messages:
+        for tc in getattr(message, "tool_calls", None) or []:
+            names.append(tc["name"])
+    return names
+
+
+def _editor_decision(text: str) -> str:
+    head = text.upper()[:400]
+    if "REVISE" in head:
+        return "REVISE"
+    if "PASS" in head:
+        return "PASS"
+    return "see verdict"
+
+
 def invoke_and_log(run_id, agent_name, agent, payload, timings, trace=False):
+    print(f"[{_clock()}] {agent_name} started")
     started = time.perf_counter()
     result = agent.invoke(payload)
     duration_s = time.perf_counter() - started
     timings[agent_name] = duration_s
     observability.record_agent_run(run_id, agent_name, result["messages"], duration_s)
+
+    extra = ""
+    tools = _tool_names(result["messages"])
+    if tools:
+        extra += f"  tools: {', '.join(tools)}"
+    if agent_name == "editor":
+        extra += f"  decision: {_editor_decision(last_text(result))}"
+    print(f"[{_clock()}] {agent_name} finished  {duration_s:.2f}s{extra}")
+
     if trace:
         observability.print_agent_trace(agent_name, result["messages"], duration_s)
     return result
@@ -112,8 +144,7 @@ def run_pipeline(topic: str, trace: bool = False) -> dict:
     )
     editor_verdict = last_text(editor_result)
 
-    if trace:
-        observability.print_run_summary(run_id, timings)
+    observability.print_run_summary(run_id, timings)
 
     return {
         "topic": topic,
