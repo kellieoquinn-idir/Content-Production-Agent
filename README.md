@@ -46,7 +46,7 @@ flowchart TD
     editor --> revise
     revise -->|"REVISE #1"| writer
     revise -->|"REVISE #2 — stop"| human
-    pass --> done["Ready for a person to publish\n(not posted automatically)"]
+    pass --> done["Ready to be published!"]
 ```
 
 ### What each agent does
