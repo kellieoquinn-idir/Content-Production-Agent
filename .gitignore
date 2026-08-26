@@ -20,6 +20,7 @@ env/
 ENV/
 
 # Runtime output
+logs/*.jsonl
 observability_log.jsonl
 pipeline_metrics.jsonl
 

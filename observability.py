@@ -2,9 +2,9 @@
 
 For each agent invocation (researcher / writer / editor), this module:
   - prints a readable trace of the full conversation (for `--trace` demos)
-  - appends one JSON line per agent run to observability_log.jsonl
+  - appends one JSON line per agent run to logs/observability_log.jsonl
     (full message exchange, for later playback / debugging)
-  - appends one JSON line per agent run to pipeline_metrics.jsonl
+  - appends one JSON line per agent run to logs/pipeline_metrics.jsonl
     (duration, message count, tool-call count, for timing analysis)
 
 Both files are append-only and gitignored; each entry is tagged with a
@@ -15,8 +15,10 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-LOG_PATH = Path("observability_log.jsonl")
-METRICS_PATH = Path("pipeline_metrics.jsonl")
+LOG_DIR = Path("logs")
+LOG_DIR.mkdir(exist_ok=True)
+LOG_PATH = LOG_DIR / "observability_log.jsonl"
+METRICS_PATH = LOG_DIR / "pipeline_metrics.jsonl"
 
 _PREVIEW_LIMIT = 400
 
