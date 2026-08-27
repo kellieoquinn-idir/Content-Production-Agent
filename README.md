@@ -21,32 +21,49 @@ Critic rules and the two-REVISE human-editor gate are in `critic.py`.
 
 ## Architecture
 
+GitHub sometimes fails to draw Mermaid. The **same architecture** is in the diagram (if it renders) and in the text flow under it.
+
 ```mermaid
 flowchart TD
-    topic["Topic (string)"]
-    researcher["Researcher agent"]
-    search["Tool: search_sources"]
-    brief["Research brief\n≥5 facts + citations/URLs"]
-    writer["Writer agent"]
-    draft["Draft post\n≥300 words, facts from brief only"]
-    editor["Editor / critic agent"]
-    pass["PASS"]
-    revise["REVISE + numbered notes"]
-    human["HUMAN EDITOR\nrequires_human_review = true"]
+    topic[Topic string]
+    researcher[Researcher agent]
+    search[search_sources tool]
+    brief[Research brief with citations]
+    writer[Writer agent]
+    draft[Draft post from the brief]
+    editor[Editor critic agent]
+    passNode[PASS]
+    revise[REVISE plus notes]
+    human[Human editor flagged]
+    publish[Not posted automatically]
 
     topic --> researcher
-    researcher -->|"calls"| search
-    search -->|"results"| researcher
+    researcher --> search
+    search --> researcher
     researcher --> brief
     brief --> writer
     writer --> draft
     brief --> editor
     draft --> editor
-    editor -->|"first line PASS or REVISE"| pass
+    editor --> passNode
     editor --> revise
-    revise -->|"REVISE #1"| writer
-    revise -->|"REVISE #2 — stop"| human
-    pass --> done["Ready for a person to publish\n(not posted automatically)"]
+    revise -->|first REVISE| writer
+    revise -->|second REVISE stop| human
+    passNode --> publish
+```
+
+**Text version of the same flow**
+
+```
+topic
+  -> Researcher  (calls search_sources)
+  -> research brief  (5+ facts and URLs)
+  -> Writer
+  -> draft  (300+ words, facts from the brief only)
+  -> Editor  (gets brief + draft)
+       PASS  -> draft is ready; a person would still publish it (nothing is posted by the code)
+       REVISE #1  -> writer rewrites from editor notes
+       REVISE #2  -> stop and flag a HUMAN EDITOR
 ```
 
 ### What each agent does
